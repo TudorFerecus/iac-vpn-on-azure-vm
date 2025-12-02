@@ -1,0 +1,7 @@
+Terraform/.terraform/
+Terraform/*.tfstate.*
+Terraform/*.tfstate
+Terraform/*.lock.hcl
+
+Ansible/vpn_configs/
+Ansible/*.conf
