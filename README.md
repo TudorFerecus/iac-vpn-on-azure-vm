@@ -2,7 +2,7 @@
 
 This project provides a complete **Infrastructure as Code (IaC)** solution to deploy your own private WireGuard VPN server on Microsoft Azure.
 
-It uses **Terraform** to provision the cloud infrastructure (Virtual Machine, Networking, Firewall) and **Ansible** to automate the configuration (WireGuard installation, key generation, and client management).
+It uses **Terraform** to provision the cloud infrastructure (Virtual Machine, Networking, Firewall) and **Ansible** to automate the configuration (Docker, WireGuard container, and Web UI deployment).
 
 ---
 
@@ -21,16 +21,20 @@ If you are a student and need a VPN, this is a fun and practical way of getting 
 ```text
 .
 ├── Ansible
-│   ├── inventory.ini       # Defines the server IP and SSH connection details
-│   └── vpn_multi_users.yml # Playbook to install WireGuard and manage users
+│   ├── inventory.ini           # Defines server IP, SSH key, and Web UI password hash
+│   └── vpn_wg_docker.yml       # Playbook to deploy Docker and WireGuard (wg-easy)
+├── Scripts
+│   ├── gen_hash.py             # Helper script to generate secure password hashes
+│   └── vpn_connect_dissconnect.sh # Helper script to easily connect/disconnect on Linux
 ├── Terraform
-│   ├── main.tf             # Azure infrastructure definition
-│   ├── terraform.tfstate   # (Created after apply)
-│   └── ...
+│   ├── main.tf                 # Azure infrastructure definition
+│   ├── terraform.tfvars        # (Optional) External variables for customization
+│   ├── variables.tf            # Variable declarations
+│   ├── terraform.tfstate       # State file (generated)
+│   └── terraform.tfstate.backup # Backup state (generated)
 └── README.md
-```
 
----
+```
 
 ## 🛠️ Prerequisites
 
@@ -38,104 +42,156 @@ Ensure you have the following installed on your local machine:
 * **Azure CLI** (`az`)
 * **Terraform**
 * **Ansible**
+* **Python 3** (for the helper scripts)
 * **SSH Key Pair**: If you don't have one, generate it: `ssh-keygen -t rsa -f ~/.ssh/vpn_vm_key`
 
 ---
 
-## 🚀 Setup & Configuration Guide
+# 🚀 Setup & Configuration Guide
 
-### Step 1: Azure Authentication
+## Step 1: Azure Authentication
 
-Before running any code, you must authenticate with Azure and retrieve your Subscription ID.
+Before running any code, you must authenticate with Azure and retrieve
+your Subscription ID.
 
 1.  Open your terminal and log in:
-    ```bash
-    az login
-    ```
-    *(This will open a browser window to authenticate).*
+
+``` bash
+az login
+```
 
 2.  Once logged in, list your accounts to find your **Subscription ID**:
-    ```bash
-    az account list --output table
-    ```
-    *Copy the `SubscriptionId` (e.g., `6ab21efd-xxxx-xxxx...`). You will need this for Terraform.*
 
-### Step 2: Provision Infrastructure (Terraform)
+``` bash
+az account list --output table
+```
+
+Copy the `SubscriptionId`. You will need this for Terraform.
+
+------------------------------------------------------------------------
+
+## Step 2: Provision Infrastructure (Terraform)
 
 1.  Navigate to the Terraform directory:
-    ```bash
-    cd Terraform
-    ```
 
-2.  Open **`main.tf`** and update the following values:
-    * **`subscription_id`**: Paste the ID you copied in Step 1.
-    * **`public_key`**: Ensure the path points to your actual public key (e.g., `~/.ssh/vpn_vm_key.pub`).
-    * **`location`**: Currently set to `switzerlandnorth`. If you encounter region restrictions (common with Student accounts), try changing this to `eastus`.
+``` bash
+cd Terraform
+```
+
+2.  Open `main.tf` and update the `subscription_id` and `public_key`
+    path.
+
+    -   **(Optional):** You can use `terraform.tfvars` to define
+        variables externally (like `location` or specific IP
+        allow-lists).
 
 3.  Initialize and apply the configuration:
-    ```bash
-    terraform init
-    terraform apply
+
+``` bash
+terraform init
+terraform apply
+```
+
+(Type **yes** when prompted).
+
+4.  **Critical:** At the end of the output, Terraform will display the
+    **Public IP** of the created VM.\
+    Note this IP down.
+
+------------------------------------------------------------------------
+
+## Step 3: Configure VPN & Web UI (Ansible)
+
+### 1. Generate a Secure Password Hash
+
+WireGuard Easy requires a specific hash format for the Web UI password.
+Run the provided helper script:
+
+``` bash
+python3 Scripts/gen_hash.py
+```
+
+Copy the resulting hash output (including the single quotes).
+
+### 2. Update Inventory
+
+Edit `Ansible/inventory.ini`. Replace the placeholder IP with your new
+Public IP and paste the password hash generated above into the
+`[vpn_servers:vars]` section.
+
+### 3. Run the Playbook:
+
+``` bash
+cd Ansible
+ansible-playbook -i inventory.ini vpn_wg_docker.yml
+```
+
+------------------------------------------------------------------------
+
+# 🖥️ Managing Clients (Web UI)
+
+Once Ansible finishes, the VPN server is running inside a Docker
+container.
+
+1.  Open your browser and navigate to:\
+    `http://<YOUR_SERVER_IP>:51821`
+2.  Log in with the password you set (the plain text version, not the
+    hash).
+3.  Click **"New Client"** to create users (e.g., `Laptop`, `Phone`).
+4.  **For Mobile:** Click the QR code icon and scan it with the
+    WireGuard app.
+5.  **For Desktop:** Click the Download icon to save the `.conf` file
+    (save it to the `Configs/` folder).
+
+------------------------------------------------------------------------
+
+# 🐧 Connecting to the VPN (Linux)
+
+You can use the standard `wg-quick` command, or the provided helper
+script for a smoother experience.
+
+### Using the Helper Script:
+
+``` bash
+# To Connect
+./Scripts/vpn_connect_disconnnect.sh ./Configs/Tudor.conf connect
+
+# To Disconnect
+./Scripts/vpn_connect_disconnnect.sh ./Configs/Tudor.conf disconnect
+```
+
+------------------------------------------------------------------------
+
+### 🐧 Important Note for Linux Users (`resolvconf` error)
+
+If you are using a distribution like **Arch Linux** or others where you manage DNS manually, you might encounter this error when connecting:
+`resolvconf: signature mismatch: /etc/resolv.conf`
+
+**The Fix:**
+1.  Open your downloaded `.conf` file (e.g., `Configs/Tudor.conf`).
+2.  Find the line starting with `DNS = ...`.
+3.  **Comment it out** by adding a `#` at the start:
+    ```ini
+    [Interface]
+    ...
+    # DNS = 1.1.1.1
     ```
-    *(Type `yes` when prompted).*
+4.  Save and try connecting again.
 
-4.  **Critical:** At the end of the output, Terraform will display the **Public IP** of the created VM. **Note this IP down.**
+*Note: This prevents the VPN from overwriting your local DNS settings, avoiding the conflict.*
 
-### Step 3: Configure VPN & Clients (Ansible)
+# ⚠️ Important Notes for Student Subscriptions
 
-1.  Navigate to the Ansible directory:
-    ```bash
-    cd ../Ansible
-    ```
+1. Provider Registration: The Terraform config includes `skip_provider_registration = true` to prevent permission errors common with Azure for Students.
 
-2.  Edit **`inventory.ini`**:
-    * Replace the placeholder IP with the **Public IP** you got from Terraform.
-    * Ensure `ansible_ssh_private_key_file` points to your private key.
+2. Regions: Free/Student accounts are often restricted in popular regions like westeurope. If deployment fails with a "Policy" or "Quota" error, try US regions (`eastus`).
 
-3.  Edit **`vpn_multi_users.yml`**:
-    * Update `vpn_setup` (approx. line 6) with the same **Public IP**.
-    * **Manage Users:** Add your devices to the `vpn_clients` list. The playbook will automatically calculate IPs and generate config files for every name in this list.
-    ```yaml
-    vpn_clients:
-      - "laptop"
-      - "iphone"
-      - "tablet"
-    ```
+# 🔮 Roadmap / Future Updates
 
-4.  Run the playbook:
-    ```bash
-    ansible-playbook -i inventory.ini vpn_setup.yml
-    ```
+* [x] Docker Support: Replaced bare-metal installation with wg-easy Docker container for Web UI management.
 
----
+* [ ] Dynamic Inventory: Configure Terraform to automatically generate the inventory.ini file with the correct IP.
 
-## 📱 Connecting to the VPN
+* [ ] Security Hardening: Restrict SSH access in the Network Security Group (NSG) to allow connections only from your specific home IP address.
 
-Once Ansible finishes successfully, it will download the configuration files to your local machine in a folder named **`vpn_configs`**.
-
-1.  **On Linux (Laptop):**
-    ```bash
-    sudo wg-quick up ./vpn_configs/laptop_tudor.conf
-    ```
-    *(To disconnect: `sudo wg-quick down ./vpn_configs/laptop_tudor.conf`)*
-
----
-
-## ⚠️ Important Notes for Student Subscriptions
-
-* **Provider Registration:** The Terraform config includes `skip_provider_registration = true` to prevent permission errors common with Azure for Students.
-* **Missing Providers:** If you receive a `MissingSubscriptionRegistration` error during Terraform apply, you must register the providers manually via CLI once:
-    ```bash
-    az provider register --namespace Microsoft.Network
-    az provider register --namespace Microsoft.Compute
-    ```
-* **Regions:** Free/Student accounts are often restricted in popular regions like `westeurope`. If deployment fails with a "Policy" or "Quota" error, try US regions (`eastus`).
-
----
-
-## 🔮 Roadmap / Future Updates
-
-* [ ] **Dynamic Inventory:** Configure Terraform to automatically generate the `inventory.ini` file with the correct IP, eliminating the manual copy-paste step.
-* [ ] **Docker Support:** Replace the bare-metal installation with a Docker container (like `wg-easy`) to provide a Web UI for easier client management and QR code generation.
-* [ ] **Security Hardening:** Restrict SSH access in the Network Security Group (NSG) to allow connections only from your specific home IP address, rather than `*` (Any).
-* [ ] **DNS Management:** Resolve `resolvconf` conflicts to allow pushing DNS settings directly from the VPN config.
+* [ ] HTTPS: Add SSL certificates (Let's Encrypt) for the Web UI.
