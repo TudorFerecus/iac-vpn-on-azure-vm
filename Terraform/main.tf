@@ -22,16 +22,16 @@ provider "azurerm" {
   skip_provider_registration = true
 
   # Change to your Subscription ID
-  subscription_id            = "X-X-X-X-X"
+  subscription_id = var.subscription_id
 }
 
 resource "azurerm_resource_group" "dev" {
-  name     = "dev-vpn-rg"
+  name = "dev-vpn-rg"
 
   # Change the location as needed 
   # (I used it because the Student Subscription has few available locations and this was the ony one working for me)
   # I would recommend using a location closer to your physical location
-  location = "switzerlandnorth"
+  location = var.location
 }
 
 resource "azurerm_virtual_network" "dev-vpn-vnet" {
@@ -104,6 +104,19 @@ resource "azurerm_network_security_group" "dev-nsg" {
     destination_address_prefix = "*"
   }
 
+  # docker port
+  security_rule {
+    name                       = "DockerWebsite"
+    priority                   = 1003
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "51821"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
 }
 
 resource "azurerm_network_interface_security_group_association" "dev-nsg-assoc" {
@@ -117,8 +130,8 @@ resource "azurerm_linux_virtual_machine" "dev-vm" {
   location            = azurerm_resource_group.dev.location
 
   # Change the size as needed, this worked the best for me in Student Subscription
-  size                = "Standard_B2ats_v2"
-  admin_username      = "adminuser"
+  size           = "Standard_B2ats_v2"
+  admin_username = "adminuser"
   network_interface_ids = [
     azurerm_network_interface.dev-nic.id,
   ]

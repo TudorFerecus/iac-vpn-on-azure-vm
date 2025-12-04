@@ -1,0 +1,80 @@
+---
+- name: WireGuard VPN Server with Docker
+  hosts: vpn_servers
+  become: yes
+
+  tasks:
+    # Needed dependencies
+    - name: install system dependencies
+      ansible.builtin.apt:
+        pkg:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: yes
+
+    # Docker installation
+    # Use the official Docker installation method for better reliability
+    - name: add docker GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    # Add Docker repository
+    # Use ansible_facts to get the distribution release dynamically
+    - name: add docker repository
+      ansible.builtin.apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable
+        state: present
+
+    # Install Docker packages
+    # Using docker-ce for the latest stable version
+    - name: install docker
+      ansible.builtin.apt:
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+          - python3-docker
+        state: present
+        update_cache: yes
+
+    - name: start docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    # making the website accesible from outside
+    - name: ip forwarding
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        sysctl_set: yes
+        state: present
+        reload: yes
+
+    # WireGuard VPN with WG-Easy Docker container
+    - name: start wg-easy container
+      community.docker.docker_container:
+        name: wg-easy
+        image: ghcr.io/wg-easy/wg-easy
+        state: started
+        restart_policy: unless-stopped
+        capabilities:
+          - NET_ADMIN
+          - SYS_MODULE
+        volumes:
+          - /etc/wireguard:/etc/wireguard
+        ports:
+          - "51820:51820/udp"
+          - "51821:51821/tcp"
+        env:
+          # variables defined in inventory
+          WG_HOST: "{{ ansible_host }}"
+          PASSWORD_HASH: "{{ web_password }}"
+          WG_DEFAULT_DNS: "1.1.1.1"
+          WG_ALLOWED_IPS: "0.0.0.0/0"
