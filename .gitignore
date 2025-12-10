@@ -5,5 +5,6 @@ Terraform/*.lock.hcl
 
 Ansible/vpn_configs/
 Ansible/*.conf
+Ansible/inverntory.ini
 
 Configs/
