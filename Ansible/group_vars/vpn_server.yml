@@ -1,0 +1,4 @@
+enable_dns: true
+
+# not best practice to store passwords in plain text, TODO use ansible vault
+web_password: $2b$12$QQrnufJ3/hE6EuoU6iq0SuLOrrq.goeUUDLniZ9pEMYAL89/AaFkG

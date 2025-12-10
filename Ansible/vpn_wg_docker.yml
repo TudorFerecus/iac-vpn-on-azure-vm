@@ -1,6 +1,6 @@
 ---
 - name: WireGuard VPN Server with Docker
-  hosts: vpn_servers
+  hosts: vpn_server
   become: yes
 
   tasks:
@@ -29,7 +29,7 @@
         repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable
         state: present
 
-    # Install Docker packages
+    # Install Docker, Nginx, Certbot packages
     # Using docker-ce for the latest stable version
     - name: install docker
       ansible.builtin.apt:
@@ -37,7 +37,10 @@
           - docker-ce
           - docker-ce-cli
           - containerd.io
+          - nginx
+          - certbot
           - docker-compose-plugin
+          - python3-certbot-nginx
           - python3-docker
         state: present
         update_cache: yes
@@ -57,24 +60,69 @@
         state: present
         reload: yes
 
-    # WireGuard VPN with WG-Easy Docker container
     - name: start wg-easy container
-      community.docker.docker_container:
+      docker_container:
         name: wg-easy
         image: ghcr.io/wg-easy/wg-easy
         state: started
         restart_policy: unless-stopped
-        capabilities:
-          - NET_ADMIN
-          - SYS_MODULE
-        volumes:
-          - /etc/wireguard:/etc/wireguard
+        capabilities: ["NET_ADMIN", "SYS_MODULE"]
+        sysctls:
+          "net.ipv4.ip_forward": "1"
+          "net.ipv4.conf.all.src_valid_mark": "1"
         ports:
           - "51820:51820/udp"
-          - "51821:51821/tcp"
+          - "{{ '127.0.0.1:51821:51821/tcp' if (enable_dns | bool) else '51821:51821/tcp' }}"
+        volumes:
+          - ~/.wg-easy:/etc/wireguard
         env:
-          # variables defined in inventory
-          WG_HOST: "{{ ansible_host }}"
+          WG_HOST: "{{ domain_name if (enable_dns | bool) else ansible_host }}"
           PASSWORD_HASH: "{{ web_password }}"
+          PORT: "51821"
+          WG_PORT: "51820"
           WG_DEFAULT_DNS: "1.1.1.1"
           WG_ALLOWED_IPS: "0.0.0.0/0"
+
+    # use the nginx to reverse proxy the wg-easy web interface
+    - name: nginx config for wg-easy
+      when: enable_dns | bool
+      copy:
+        dest: "/etc/nginx/sites-available/{{ domain_name }}"
+        content: |
+          server {
+              listen 80;
+              server_name {{ domain_name }};
+
+              location / {
+                  proxy_pass http://127.0.0.1:51821;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection "upgrade";
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              }
+          }
+
+    - name: enable Nginx site
+      when: enable_dns | bool
+      file:
+        src: "/etc/nginx/sites-available/{{ domain_name }}"
+        dest: "/etc/nginx/sites-enabled/{{ domain_name }}"
+        state: link
+
+  
+    - name: remove default nginx site
+      when: enable_dns | bool
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Obtain SSL certificate with Certbot
+      when: enable_dns | bool
+      command: >
+        certbot --nginx -d {{ domain_name }} 
+        --non-interactive --agree-tos -m admin@{{ domain_name }} 
+        --redirect
+      args:
+        creates: /etc/letsencrypt/live/{{ domain_name }}/fullchain.pem

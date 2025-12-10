@@ -4,6 +4,11 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
+
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5"
+    }
   }
 }
 
@@ -23,6 +28,10 @@ provider "azurerm" {
 
   # Change to your Subscription ID
   subscription_id = var.subscription_id
+}
+
+provider "cloudflare" {
+  api_token = var.cloudflare_api
 }
 
 resource "azurerm_resource_group" "dev" {
@@ -117,6 +126,37 @@ resource "azurerm_network_security_group" "dev-nsg" {
     destination_address_prefix = "*"
   }
 
+  # allow http traffic
+  dynamic "security_rule" {
+    for_each = var.create_dns_record ? [1] : []
+    content {
+      name                       = "HTTP"
+      priority                   = 1004
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "80"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    }
+  }
+
+  # allow https traffic
+  dynamic "security_rule" {
+    for_each = var.create_dns_record ? [1] : []
+    content {
+      name                       = "HTTPS"
+      priority                   = 1005
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "443"
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    }
+  }
 }
 
 resource "azurerm_network_interface_security_group_association" "dev-nsg-assoc" {
@@ -131,7 +171,7 @@ resource "azurerm_linux_virtual_machine" "dev-vm" {
 
   # Change the size as needed, this worked the best for me in Student Subscription
   size           = "Standard_B2ats_v2"
-  admin_username = "adminuser"
+  admin_username = var.vm_user
   network_interface_ids = [
     azurerm_network_interface.dev-nic.id,
   ]
@@ -140,9 +180,8 @@ resource "azurerm_linux_virtual_machine" "dev-vm" {
   # You can generate it with: ssh-keygen -t rsa
   # Make sure to not have a passphrase, or use ssh-agent to manage it
   admin_ssh_key {
-    # Change the username as you want
-    username   = "adminuser"
-    public_key = file("~/.ssh/vpn_vm_key.pub")
+    username   = var.vm_user
+    public_key = file("${var.private_key_path}.pub")
   }
 
   os_disk {
@@ -158,4 +197,27 @@ resource "azurerm_linux_virtual_machine" "dev-vm" {
   }
 
 
+}
+
+resource "local_file" "ansible_inventory" {
+  filename = "${path.module}/../Ansible/inventory.ini"
+  content = templatefile("${path.module}/inventory.tftpl", {
+    vm_ip           = azurerm_public_ip.vpn_ip.ip_address
+    vm_user         = var.vm_user
+    private_key_vpn = var.private_key_path
+    record_link     = var.create_dns_record ? "${var.dns_name}.${var.domain_name}" : azurerm_public_ip.vpn_ip.ip_address
+  })
+}
+
+# Cloudflare DNS Record
+
+resource "cloudflare_dns_record" "vpn_dns" {
+  count = var.create_dns_record ? 1 : 0
+
+  zone_id = var.zone_id
+  name    = var.dns_name
+  content = azurerm_public_ip.vpn_ip.ip_address
+  type    = "A"
+  proxied = false
+  ttl     = 60
 }
