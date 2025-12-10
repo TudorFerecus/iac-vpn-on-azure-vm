@@ -224,3 +224,76 @@ If you are using a distribution like **Arch Linux** or others where you manage D
 * [x] HTTPS: Add SSL certificates (Let's Encrypt) for the Web UI.
 
 * [ ] Security Hardening: Restrict SSH access in the Network Security Group (NSG) to allow connections only from your specific home IP address.
+
+
+# 🛠️ Flowchart
+
+Down below is the flowchart of how this all works
+
+``` mermaid
+flowchart TD
+    classDef userNode fill:#dcfce7,stroke:#166534,stroke-width:2px,color:#14532d;
+    classDef cloudService fill:#eff6ff,stroke:#1d4ed8,stroke-width:2px,color:#1e3a8a;
+    classDef securityNode fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#9a3412;
+    classDef computeNode fill:#f3e8ff,stroke:#7e22ce,stroke-width:2px,color:#581c87;
+    classDef containerNode fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e;
+    classDef storageNode fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#854d0e;
+    
+    User([💻 User / Phone]):::userNode
+    
+    subgraph External_Services [🌐 Internet & DNS]
+        direction TB
+        style External_Services fill:#fafafa,stroke:#e5e7eb,stroke-dasharray: 5 5
+        CF(☁️ Cloudflare DNS):::cloudService
+    end
+
+    subgraph Azure_Cloud [☁️ Microsoft Azure Region]
+        direction TB
+        style Azure_Cloud fill:#f0f9ff,stroke:#0ea5e9,stroke-width:2px
+        
+        subgraph Resource_Group [📦 Resource Group: dev-vpn-rg]
+            style Resource_Group fill:#ffffff,stroke:#94a3b8,stroke-width:1px
+            
+            IP(🌍 Public IP):::cloudService
+            NSG{🛡️ NSG Firewall}:::securityNode
+            NIC(🔌 Network Interface):::cloudService
+
+            subgraph VNet [Virtual Network: 10.0.0.0/16]
+                style VNet fill:#f8fafc,stroke:#cbd5e1,stroke-dasharray: 3 3
+                
+                subgraph Subnet [Subnet: 10.0.2.0/24]
+                    style Subnet fill:#ffffff,stroke:#e2e8f0
+                    
+                    subgraph VM_Box [🖥️ VM: dev-vm]
+                        style VM_Box fill:#f5f3ff,stroke:#8b5cf6,stroke-width:2px
+                        
+                        subgraph Docker_Engine [🐳 Docker Engine]
+                            style Docker_Engine fill:#ffffff,stroke:#38bdf8,stroke-dasharray: 2 2
+                            
+                            WG[⚡ WireGuard Container]:::containerNode
+                            NGINX[Tb Nginx Proxy]:::containerNode
+                        end
+                        
+                        FILES[(📂 Config Files\n/opt/wireguard)]:::storageNode
+                    end
+                end
+            end
+        end
+    end
+    
+    User -.-o|DNS Request| CF
+    CF -.->|A Record IP| User
+    
+    User ==>|VPN Tunnel UDP/51820| IP
+    User -->|HTTPS TCP/443| IP
+    
+    IP --> NSG
+    NSG -->|Allow Rules| NIC
+    NIC --> VM_Box
+    
+    WG <-->|Internal Network| NGINX
+    NGINX -->|Proxy Pass :51821| WG
+    FILES -.-o|Volume Mount| WG
+
+    linkStyle default stroke:#64748b,stroke-width:1px;
+```
