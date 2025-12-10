@@ -89,8 +89,20 @@ Copy the `SubscriptionId`. You will need this for Terraform.
 cd Terraform
 ```
 
-2.  **Configure Variables**: Modify terraform.tfvars to define your settings. This keeps your secrets safe and separate from the code.
+2.  **Configure Variables**: Create a file named `terraform.tfvars` to define your settings. This keeps your secrets safe and separate from the code.
+``` bash
+subscription_id  = "YOUR-AZURE-SUB-ID"
+private_key_path = "~/.ssh/vpn_vm_key"
+location         = "eastus" # Recommended for Students
+vm_user          = "adminuser"
 
+# --- Optional: Cloudflare DNS & SSL ---
+# Only set these if you want a custom domain + HTTPS
+create_dns_record = true
+cloudflare_api    = "YOUR-CLOUDFLARE-TOKEN"
+zone_id           = "YOUR-CLOUDFLARE-ZONE-ID"
+dns_name          = "vpn" # Subdomain (e.g., vpn.tudorferecus.ro)
+```
 
 3.  **Initialize** and **apply** the configuration:
 
@@ -127,7 +139,7 @@ Navigate to `Ansible/group_vars/vpn_server.yml`. This is where you configure the
 
 **Example** `vpn_server.yml`:
 
-```
+``` bash
 enable_dns: true  # Set to false if you are NOT using a domain
 domain_name: vpn.yourdomain.com
 web_password: '$2b$12$...' # Your generated hash
