@@ -2,8 +2,10 @@ Terraform/.terraform/
 Terraform/*.tfstate.*
 Terraform/*.tfstate
 Terraform/*.lock.hcl
+Terraform/*.tfvars
 
 Ansible/vpn_configs/
 Ansible/*.conf
+Ansible/inverntory.ini
 
 Configs/
