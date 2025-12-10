@@ -15,7 +15,7 @@ def generate():
     salt = bcrypt.gensalt()
     hash_result = bcrypt.hashpw(bytes_password, salt)
 
-    print("\n✅ DONE! Add the hash below to your inventory.ini file")
+    print("\n✅ DONE! Add the hash below to ./group_vars/vpn_server.yml file")
     print("-" * 60)
 
     # Decode to string for display
