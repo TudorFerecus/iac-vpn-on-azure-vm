@@ -232,14 +232,6 @@ Down below is the flowchart of how this all works
 
 ``` mermaid
 flowchart TD
-    classDef userNode fill:#dcfce7,stroke:#166534,stroke-width:2px,color:#14532d;
-    classDef cloudService fill:#eff6ff,stroke:#1d4ed8,stroke-width:2px,color:#1e3a8a;
-    classDef securityNode fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#9a3412;
-    classDef computeNode fill:#f3e8ff,stroke:#7e22ce,stroke-width:2px,color:#581c87;
-    classDef containerNode fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e;
-    classDef storageNode fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#854d0e;
-    
-    User([💻 User / Phone]):::userNode
     
     subgraph External_Services [🌐 Internet & DNS]
         direction TB
